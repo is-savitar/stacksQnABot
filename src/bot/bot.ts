@@ -4,6 +4,7 @@ import { settings } from "../config/constants";
 // import { handleCallbackQuery } from "./handlers/callbackquery_handler";
 import logger from "../utils/logger";
 import { start } from "./commands/start";
+import { handleCallbackQuery } from "./handlers/callbackquery";
 
 console.log(settings);
 export const bot = new TelegramBot(settings.token!, { polling: true });
@@ -12,4 +13,4 @@ bot.onText(/\/start/, start);
 
 // bot.on("message", handleMessage);
 
-// bot.on("callback_query", handleCallbackQuery);
+bot.on("callback_query", handleCallbackQuery);
