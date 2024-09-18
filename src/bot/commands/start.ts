@@ -7,6 +7,10 @@ import logger from "../../utils/logger";
 const messageIdStore = new Map<number, number>();
 export const activeQuizzes = new Set<number>();
 export const failedQuestions = new Map<number, number[]>();
+const scoresMap = new Map<number, number>();
+type BunTimer = ReturnType<typeof setTimeout>;
+
+const timerMap = new Map<number, BunTimer>();
 
 export const start = (msg: Message) => {
   const chatId = msg?.chat.id;
@@ -16,6 +20,13 @@ export const start = (msg: Message) => {
   }
   activeQuizzes.add(chatId);
   failedQuestions.delete(chatId);
+  scoresMap.set(chatId, 0);
+  const quizDuration = 2 * 60 * 1000;
+
+  const timer: BunTimer = setTimeout(() => {
+    finishQuiz(chatId, msg);
+  }, quizDuration);
+  timerMap.set(chatId, timer);
 
   bot.sendMessage(
     chatId,
@@ -25,7 +36,7 @@ export const start = (msg: Message) => {
         inline_keyboard: [
           [
             {
-              text: " ⏰ With timer",
+              text: " ⏰ With timer (2min)",
               callback_data: JSON.stringify({
                 command: "start",
                 option: "with_timer",
@@ -69,6 +80,7 @@ export const sendQuestion = (msg: Message, current: number) => {
 
   const inlineKeyboard = [];
   for (let i = 0; i < options.length; i += 2) {
+    // @ts-ignore
     inlineKeyboard.push(options.slice(i, i + 2));
   }
 
@@ -94,7 +106,6 @@ export const sendQuestion = (msg: Message, current: number) => {
 };
 
 export const handleAnswer = (msg: Message, data: any) => {
-  let scores = 0;
   const chatId = msg?.chat.id;
   const { questionIndex, selectedOption } = JSON.parse(data || "{}");
 
@@ -102,13 +113,16 @@ export const handleAnswer = (msg: Message, data: any) => {
     failedQuestions.set(chatId, []);
   }
 
-  const failedQuestionsList = failedQuestions.get(chatId) || [];
+  if (!scoresMap.has(chatId)) {
+    scoresMap.set(chatId, 0);
+  }
 
+  const failedQuestionsList = failedQuestions.get(chatId) || [];
+  const currentScore = scoresMap.get(chatId) || 0;
   const currentQuestion = quiz[questionIndex];
 
-  // Compare the selected option with the correct one
   if (selectedOption === currentQuestion.correct) {
-    scores++;
+    scoresMap.set(chatId, currentScore + 1);
     bot.sendMessage(chatId, "Correct! 🎉");
   } else {
     bot.sendMessage(chatId, "Oops, wrong answer.");
@@ -132,10 +146,34 @@ export const handleAnswer = (msg: Message, data: any) => {
   if (nextQuestionIndex < quiz.length) {
     sendQuestion(msg, nextQuestionIndex);
   } else {
-    bot.sendMessage(
-      chatId,
-      "Quiz finished! You can use /failed to see the questions you failed.",
-    );
-    activeQuizzes.delete(chatId);
+    finishQuiz(chatId, msg);
+    // bot.sendMessage(
+    //   chatId,
+    //   `Quiz finished! You can use /failed to see the questions you failed.\nFailed: ${failedQuestionsList.length}\n Score: ${scoresMap.get(chatId)}`,
+    // );
+    // activeQuizzes.delete(chatId);
+    // scoresMap.delete(chatId);
+  }
+};
+
+export const finishQuiz = (chatId: number, msg: Message) => {
+  const failedQuestionsList = failedQuestions.get(chatId) || [];
+  const score = scoresMap.get(chatId) || 0;
+
+  bot.sendMessage(
+    chatId,
+    `Time's up! Quiz finished! You can use /failed to see the questions you missed.\nFailed: ${failedQuestionsList.length}\n Score: ${score}`,
+  );
+
+  // Clean up
+  activeQuizzes.delete(chatId);
+  scoresMap.delete(chatId);
+  failedQuestions.delete(chatId);
+
+  // Clear the timer if it's still running
+  const timer = timerMap.get(chatId);
+  if (timer) {
+    clearTimeout(timer);
+    timerMap.delete(chatId);
   }
 };
